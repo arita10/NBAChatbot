@@ -104,7 +104,6 @@ def get_ai_reply(session_id: str, user_message: str):
 7. ห้ามปฏิเสธหรือบอกว่าตอบไม่ได้
 8. ห้ามพูดถึงบริการที่ไม่มีในรายการเด็ดขาด
 9. ทุกข้อความต้องสั้น กระชับ ไม่เกิน 5 บรรทัด"""
-"
 
     # 6. Build messages list
     messages = [{"role": "system", "content": system_prompt}]
