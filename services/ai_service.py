@@ -18,7 +18,7 @@ def clean_user_message(text: str) -> str:
 
 def get_chat_history(session_id: str):
     from datetime import datetime, timedelta, timezone
-    cutoff = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=30)).isoformat()
     result = supabase.table("tb_chat_history") \
         .select("role, message") \
         .eq("session_id", session_id) \
