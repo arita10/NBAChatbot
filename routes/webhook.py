@@ -6,7 +6,7 @@ import base64
 import json
 import os
 from dotenv import load_dotenv
-from services.ai_service import get_ai_reply
+from services.ai_service import get_ai_reply, save_message
 from services.lead_detector import detect_lead
 from services.line_service import send_line_message
 from database import supabase
@@ -68,6 +68,12 @@ async def webhook(request: Request):
                 lead.get("phone_number"),
                 lead.get("service_type")
             )
+        elif lead.get("missing") == "phone":
+            reply = f"ขอบคุณครับคุณ {lead.get('customer_name')} 😊 กรุณาแจ้งเบอร์โทรศัพท์ด้วยนะครับ\n📞 เบอร์โทร:"
+            save_message(session_id, "assistant", reply)
+        elif lead.get("missing") == "valid_phone":
+            reply = "ขออภัยครับ เบอร์โทรที่ได้รับดูไม่ถูกต้อง กรุณากรอกเบอร์โทร 10 หลัก เช่น 0812345678 ครับ 📞"
+            save_message(session_id, "assistant", reply)
 
         # Reply to LINE user
         import requests

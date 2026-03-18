@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 from models import ChatRequest, ChatResponse
-from services.ai_service import get_ai_reply
+from services.ai_service import get_ai_reply, save_message
 from services.lead_detector import detect_lead
 from services.line_service import send_line_message
 from database import supabase
@@ -38,6 +38,18 @@ def chat(request: ChatRequest):
             lead.get("phone_number"),
             lead.get("service_type")
         )
+
+    elif lead.get("missing") == "phone":
+        # Has name but no phone — ask for phone
+        follow_up = f"ขอบคุณครับคุณ {lead.get('customer_name')} 😊 กรุณาแจ้งเบอร์โทรศัพท์ด้วยนะครับ\n📞 เบอร์โทร:"
+        save_message(request.session_id, "assistant", follow_up)
+        reply = follow_up
+
+    elif lead.get("missing") == "valid_phone":
+        # Phone number invalid format
+        follow_up = "ขออภัยครับ เบอร์โทรที่ได้รับดูไม่ถูกต้อง กรุณากรอกเบอร์โทร 10 หลัก เช่น 0812345678 ครับ 📞"
+        save_message(request.session_id, "assistant", follow_up)
+        reply = follow_up
 
     return ChatResponse(
         session_id=request.session_id,
