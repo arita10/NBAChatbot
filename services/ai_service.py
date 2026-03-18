@@ -17,11 +17,14 @@ def clean_user_message(text: str) -> str:
 
 
 def get_chat_history(session_id: str):
+    from datetime import datetime, timedelta, timezone
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
     result = supabase.table("tb_chat_history") \
         .select("role, message") \
         .eq("session_id", session_id) \
+        .gte("created_at", cutoff) \
         .order("created_at") \
-        .limit(10) \
+        .limit(6) \
         .execute()
     return result.data
 
@@ -103,7 +106,7 @@ def get_ai_reply(session_id: str, user_message: str):
 
     # 7. Call GPT-4o mini
     response = client.chat.completions.create(
-        model="gpt-4o-mini",
+        model="gpt-4o",
         messages=messages,
         temperature=0.7
     )
