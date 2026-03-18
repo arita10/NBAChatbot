@@ -1,20 +1,28 @@
 from fastapi import APIRouter, Request, HTTPException
-from linebot import LineBotApi, WebhookHandler
-from linebot.models import MessageEvent, TextMessage, TextSendMessage
-from linebot.exceptions import InvalidSignatureError
+from fastapi.responses import JSONResponse
+import hmac
+import hashlib
+import base64
+import json
+import os
+from dotenv import load_dotenv
 from services.ai_service import get_ai_reply
 from services.lead_detector import detect_lead
 from services.line_service import send_line_message
 from database import supabase
-import os
-from dotenv import load_dotenv
 
 load_dotenv()
 
 router = APIRouter()
 
-line_bot_api = LineBotApi(os.getenv("LINE_CHANNEL_ACCESS_TOKEN"))
-handler = WebhookHandler(os.getenv("LINE_CHANNEL_SECRET"))
+LINE_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
+LINE_SECRET = os.getenv("LINE_CHANNEL_SECRET")
+
+
+def verify_signature(body: bytes, signature: str) -> bool:
+    hash = hmac.new(LINE_SECRET.encode("utf-8"), body, hashlib.sha256).digest()
+    expected = base64.b64encode(hash).decode("utf-8")
+    return hmac.compare_digest(expected, signature)
 
 
 @router.post("/webhook")
@@ -22,46 +30,57 @@ async def webhook(request: Request):
     signature = request.headers.get("X-Line-Signature", "")
     body = await request.body()
 
-    try:
-        handler.handle(body.decode("utf-8"), signature)
-    except InvalidSignatureError:
+    if not verify_signature(body, signature):
         raise HTTPException(status_code=400, detail="Invalid signature")
 
-    return {"status": "ok"}
+    data = json.loads(body.decode("utf-8"))
 
+    for event in data.get("events", []):
+        # Print group ID if available
+        source = event.get("source", {})
+        if source.get("type") == "group":
+            print(f"GROUP ID: {source.get('groupId')}")
 
-@handler.add(MessageEvent, message=TextMessage)
-def handle_message(event):
-    # Get session id and message
-    session_id = event.source.user_id
-    user_message = event.message.text
+        if event.get("type") != "message":
+            continue
+        if event.get("message", {}).get("type") != "text":
+            continue
 
-    # Print group ID if message is from a group (one-time setup)
-    if hasattr(event.source, "group_id"):
-        print(f"GROUP ID: {event.source.group_id}")
+        session_id = source.get("userId")
+        user_message = event["message"]["text"]
+        reply_token = event["replyToken"]
 
-    # Get AI reply
-    reply = get_ai_reply(session_id, user_message)
+        # Get AI reply
+        reply = get_ai_reply(session_id, user_message)
 
-    # Detect lead
-    lead = detect_lead(f"User: {user_message}\nAssistant: {reply}")
+        # Detect lead
+        lead = detect_lead(f"User: {user_message}\nAssistant: {reply}")
 
-    if lead.get("found"):
-        supabase.table("tb_leads").insert({
-            "customer_name": lead.get("customer_name"),
-            "phone_number": lead.get("phone_number"),
-            "service_type": lead.get("service_type"),
-            "status": "new"
-        }).execute()
+        if lead.get("found"):
+            supabase.table("tb_leads").insert({
+                "customer_name": lead.get("customer_name"),
+                "phone_number": lead.get("phone_number"),
+                "service_type": lead.get("service_type"),
+                "status": "new"
+            }).execute()
+            send_line_message(
+                lead.get("customer_name"),
+                lead.get("phone_number"),
+                lead.get("service_type")
+            )
 
-        send_line_message(
-            lead.get("customer_name"),
-            lead.get("phone_number"),
-            lead.get("service_type")
+        # Reply to LINE user
+        import requests
+        requests.post(
+            "https://api.line.me/v2/bot/message/reply",
+            headers={
+                "Authorization": f"Bearer {LINE_TOKEN}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "replyToken": reply_token,
+                "messages": [{"type": "text", "text": reply}]
+            }
         )
 
-    # Reply to LINE user
-    line_bot_api.reply_message(
-        event.reply_token,
-        TextSendMessage(text=reply)
-    )
+    return JSONResponse(content={"status": "ok"})
