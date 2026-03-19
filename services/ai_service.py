@@ -106,7 +106,7 @@ def get_ai_reply(session_id: str, user_message: str):
 
     # 7. Call GPT-4o mini
     response = client.chat.completions.create(
-        model="gpt-4o",
+        model="gpt-4o-mini",
         messages=messages,
         temperature=0.7
     )
